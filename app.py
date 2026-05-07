@@ -154,6 +154,7 @@ BASE_TEMPLATE = '''
         <a href="/insights">Insights</a>
         <a href="/objectifs">Objectifs</a>
         <a href="/bibliotheque">Bibliothèque</a>
+        <a href="/apropos">À propos</a>
     </div>
 </nav>
 <div class="container">
@@ -179,13 +180,27 @@ BASE_TEMPLATE = '''
         }},
         retina_detect: true
     }});
+    const phrases = {phrases};
+    let i = 0, j = 0, isDeleting = false;
+    function type() {{
+        const current = phrases[i];
+        const typed = document.getElementById("typed");
+        if (typed) {{
+            if (isDeleting) typed.innerText = current.substring(0, j--);
+            else typed.innerText = current.substring(0, j++);
+            if (!isDeleting && j === current.length) isDeleting = true;
+            if (isDeleting && j === 0) {{ isDeleting = false; i = (i + 1) % phrases.length; }}
+        }}
+        setTimeout(type, 100);
+    }}
+    type();
 </script>
 </body>
 </html>
 '''
 
-def render_page(title, content):
-    return BASE_TEMPLATE.format(title=title, content=content)
+def render_page(title, content, phrases):
+    return BASE_TEMPLATE.format(title=title, content=content, phrases=phrases)
 
 # ==================== PAGE ACCUEIL ====================
 ACCUEIL = '''
@@ -198,25 +213,11 @@ ACCUEIL = '''
     <div class="card-glass"><i class="fas fa-eye" style="font-size:2rem; color:#FACC15;"></i><h3>Transparence totale</h3><p>Visualisez les fonds publics</p></div>
     <div class="card-glass"><i class="fas fa-shield-alt" style="font-size:2rem; color:#FACC15;"></i><h3>Sécurité avancée</h3><p>Accès agent certifié</p></div>
 </div>
-<script>
-    const phrases = ["La transparence au service de la nation.", "Données publiques pour un Congo qui avance.", "Ensemble, bâtissons une administration exemplaire."];
-    let i = 0, j = 0, isDeleting = false;
-    function type() {
-        const current = phrases[i];
-        const typed = document.getElementById("typed");
-        if (isDeleting) typed.innerText = current.substring(0, j--);
-        else typed.innerText = current.substring(0, j++);
-        if (!isDeleting && j === current.length) isDeleting = true;
-        if (isDeleting && j === 0) { isDeleting = false; i = (i + 1) % phrases.length; }
-        setTimeout(type, 100);
-    }
-    type();
-</script>
 '''
 
 @app.route('/')
 def index():
-    return render_page("Accueil", ACCUEIL)
+    return render_page("Accueil", ACCUEIL, '["La transparence au service de la nation.", "Données publiques pour un Congo qui avance.", "Ensemble, bâtissons une administration exemplaire."]')
 
 # ==================== DASHBOARD ====================
 DASHBOARD = '''
@@ -237,11 +238,11 @@ DASHBOARD = '''
             <div class="card-glass"><div class="kpi-value">${(stats.masse_salariale/1e6).toFixed(1)}M</div><div>Masse salariale</div></div>
             <div class="card-glass"><div class="kpi-value">${(stats.manque_fiscal/1e6).toFixed(0)}M</div><div>Manque 2025</div></div>
         `;
-        let agentsHtml = '</tr>';
+        let agentsHtml = '</table>';
         agents.forEach(a => { agentsHtml += `<tr><td><strong>${a.nom}</strong><br><small>${a.grade}</small></td><td style="text-align:right">${(a.salaire/1e6).toFixed(2)}M FC</td></tr>`; });
-        agentsHtml += '</tr>';
+        agentsHtml += '</table>';
         document.getElementById('agentsTable').innerHTML = agentsHtml;
-        let societesHtml = '<table><thead><tr><th>Société</th><th>Impôt dû</th><th>Payé</th><th>Statut</th> </thead><tbody>';
+        let societesHtml = '<tr><thead><tr><th>Société</th><th>Impôt dû</th><th>Payé</th><th>Statut</th> </thead><tbody>';
         societes.forEach(s => {
             let badge = s.statut === 'Alerte' ? 'badge-alert' : (s.statut === 'Conforme' ? 'badge-conforme' : 'badge-modere');
             societesHtml += `<tr><td>${s.nom}</td><td>${s.impot_du}M$</td><td>${s.impot_paye}M$</td><td><span class="${badge}">${s.statut}</span></td>`;
@@ -258,7 +259,7 @@ DASHBOARD = '''
 
 @app.route('/dashboard')
 def dashboard():
-    return render_page("Dashboard", DASHBOARD)
+    return render_page("Dashboard", DASHBOARD, '["Visualisez les indicateurs clés en temps réel.", "Suivez l\'évolution des impôts et des agents.", "Prenez des décisions basées sur des données fiables."]')
 
 # ==================== INSIGHTS ====================
 INSIGHTS = '''
@@ -291,7 +292,7 @@ INSIGHTS = '''
 
 @app.route('/insights')
 def insights():
-    return render_page("Insights", INSIGHTS)
+    return render_page("Insights", INSIGHTS, '["Analyse des écarts fiscaux par secteur.", "Découvrez les tendances et anomalies.", "Des données pour mieux comprendre l\'économie."]')
 
 # ==================== OBJECTIFS ====================
 OBJECTIFS = '''
@@ -314,7 +315,7 @@ OBJECTIFS = '''
 
 @app.route('/objectifs')
 def objectifs():
-    return render_page("Objectifs", OBJECTIFS)
+    return render_page("Objectifs", OBJECTIFS, '["Mesurez l\'avancement des objectifs 2025.", "Suivez les cibles de l\'administration.", "Atteignons ensemble nos ambitions nationales."]')
 
 # ==================== BIBLIOTHEQUE ====================
 BIBLIOTHEQUE = '''
@@ -335,7 +336,49 @@ BIBLIOTHEQUE = '''
 
 @app.route('/bibliotheque')
 def bibliotheque():
-    return render_page("Bibliothèque", BIBLIOTHEQUE)
+    return render_page("Bibliothèque", BIBLIOTHEQUE, '["Des livres pour comprendre la gouvernance.", "La connaissance au service de la transparence.", "Formez-vous pour mieux agir."]')
+
+# ==================== PAGE À PROPOS ====================
+APROPOS = '''
+<div class="hero">
+    <h1>À propos d'OYEBI</h1>
+</div>
+
+<div class="card-glass">
+    <h2>📌 Notre Vision</h2>
+    <p>OYEBI est né d'une conviction profonde : <strong>la transparence est le fondement d'une gouvernance juste et efficace</strong>. Notre vision est de faire de la République Démocratique du Congo un modèle de gouvernance ouverte, où chaque citoyen peut accéder aux données publiques et comprendre comment son pays est géré.</p>
+</div>
+
+<div class="card-glass">
+    <h2>🎯 Notre Mission</h2>
+    <p>Offrir une plateforme accessible, fiable et moderne qui centralise les données essentielles de l'administration congolaise : situation des agents publics, traçabilité des recettes fiscales, suivi des objectifs nationaux, et ressources documentaires citoyennes.</p>
+</div>
+
+<div class="card-glass">
+    <h2>💎 Nos Valeurs</h2>
+    <div class="grid-3">
+        <div class="card-glass"><i class="fas fa-eye" style="font-size:2rem; color:#FACC15;"></i><h3>Transparence</h3><p>Les données sont ouvertes, vérifiables et accessibles à tous.</p></div>
+        <div class="card-glass"><i class="fas fa-shield-alt" style="font-size:2rem; color:#FACC15;"></i><h3>Intégrité</h3><p>Nous ne modifions ni ne censurons aucune donnée.</p></div>
+        <div class="card-glass"><i class="fas fa-chart-line" style="font-size:2rem; color:#FACC15;"></i><h3>Innovation</h3><p>Des outils modernes pour une administration plus efficace.</p></div>
+    </div>
+</div>
+
+<div class="card-glass">
+    <h2>🌍 Pourquoi OYEBI ?</h2>
+    <p>Le nom <strong>OYEBI</strong> signifie "savoir" ou "connaître" en lingala. Parce qu'un citoyen informé est un citoyen qui peut agir. OYEBI est un outil au service du peuple congolais, pour une démocratie plus participative et une administration plus responsable.</p>
+</div>
+
+<div class="card-glass" style="text-align: center;">
+    <h2>👨‍💻 Concepteur</h2>
+    <p><strong>Kenny Kabulo Matanda</strong><br>
+    Développeur passionné par la Civic Tech et la gouvernance transparente.<br>
+    <i class="fas fa-map-marker-alt"></i> Kinshasa, République Démocratique du Congo</p>
+</div>
+'''
+
+@app.route('/apropos')
+def apropos():
+    return render_page("À propos", APROPOS, '["Une vision pour un Congo transparent.", "La donnée au service du citoyen.", "Innovation et intégrité."]')
 
 # ==================== API ====================
 @app.route('/api/agents')
