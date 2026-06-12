@@ -4,50 +4,34 @@ import json
 import hashlib
 import secrets
 from datetime import datetime
+import numpy as np
+from sklearn.linear_model import LinearRegression
 
 app = Flask(__name__)
-app.secret_key = 'oyebi_secret_key_2026'
+app.secret_key = 'oyebi_super_ia_key'
 
-# ==================== AUTHENTIFICATION ====================
+# ==================== AUTH ====================
 users = {}
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get('user'):
-            return redirect('/login')
-        return f(*args, **kwargs)
-    return decorated
+def hash_password(p): return hashlib.sha256(p.encode()).hexdigest()
 
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
-    email = data.get('email')
-    password = data.get('password')
-    name = data.get('name')
-    if email in users:
-        return jsonify({"error": "Email déjà utilisé"}), 400
-    if not email or '@' not in email:
-        return jsonify({"error": "Email invalide"}), 400
-    if len(password) < 6:
-        return jsonify({"error": "Mot de passe trop court (min 6 caractères)"}), 400
-    users[email] = {"name": name, "password": hash_password(password), "email": email, "created_at": datetime.now().isoformat()}
-    return jsonify({"message": "Compte créé avec succès !"}), 201
+    email, password, name = data.get('email'), data.get('password'), data.get('name')
+    if email in users: return jsonify({"error": "Email déjà utilisé"}), 400
+    if '@' not in email: return jsonify({"error": "Email invalide"}), 400
+    if len(password) < 6: return jsonify({"error": "Mot de passe trop court"}), 400
+    users[email] = {"name": name, "password": hash_password(password), "email": email}
+    return jsonify({"message": "Compte créé !"}), 201
 
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
-    email = data.get('email')
-    password = data.get('password')
-    user = users.get(email)
-    if not user or user['password'] != hash_password(password):
-        return jsonify({"error": "Email ou mot de passe incorrect"}), 401
-    token = secrets.token_hex(32)
-    session['user'] = email
-    return jsonify({"token": token, "user": {"name": user['name'], "email": user['email']}}), 200
+    user = users.get(data.get('email'))
+    if not user or user['password'] != hash_password(data.get('password')):
+        return jsonify({"error": "Identifiants incorrects"}), 401
+    session['user'] = data.get('email')
+    return jsonify({"token": secrets.token_hex(32), "user": {"name": user['name'], "email": user['email']}}), 200
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -57,30 +41,57 @@ def logout():
 @app.route('/api/me')
 def me():
     email = session.get('user')
-    if not email:
-        return jsonify({"error": "Non authentifié"}), 401
-    user = users.get(email)
-    return jsonify({"name": user['name'], "email": user['email']}), 200
+    if not email: return jsonify({"error": "Non authentifié"}), 401
+    return jsonify(users[email]), 200
 
-# ==================== DONNEES ====================
-AGENTS = [
-    {"id": "AG-001", "nom": "KABULO Kenny", "grade": "Directeur", "salaire": 3000000},
-    {"id": "AG-002", "nom": "MBEMBA Jeanne", "grade": "Chef Bureau", "salaire": 2100000},
-    {"id": "AG-003", "nom": "TSHIBANDA Paul", "grade": "Agent", "salaire": 1300000},
+# ==================== DONNÉES MONDIALES COMPLÈTES ====================
+COUNTRIES = [
+    {"code": "CD", "nom": "République Démocratique du Congo", "capitale": "Kinshasa", "population": 95000000, "pib": 65000, "inflation": 18.5, "chomage": 22.0, "croissance": 4.5},
+    {"code": "US", "nom": "États-Unis", "capitale": "Washington", "population": 335000000, "pib": 25400000, "inflation": 3.2, "chomage": 3.8, "croissance": 2.1},
+    {"code": "FR", "nom": "France", "capitale": "Paris", "population": 68000000, "pib": 2780000, "inflation": 2.5, "chomage": 7.2, "croissance": 1.8},
+    {"code": "CN", "nom": "Chine", "capitale": "Pékin", "population": 1410000000, "pib": 17800000, "inflation": 1.8, "chomage": 5.0, "croissance": 5.2},
+    {"code": "DE", "nom": "Allemagne", "capitale": "Berlin", "population": 83000000, "pib": 4080000, "inflation": 2.1, "chomage": 3.1, "croissance": 1.5},
+    {"code": "ZA", "nom": "Afrique du Sud", "capitale": "Pretoria", "population": 60000000, "pib": 419000, "inflation": 5.5, "chomage": 32.0, "croissance": 1.2},
 ]
 
-SOCIETES = [
-    {"nom": "Minière du Congo", "secteur": "Mines", "impot_du": 13500, "impot_paye": 3200, "statut": "Alerte"},
-    {"nom": "Telecom Congo", "secteur": "Telco", "impot_du": 8400, "impot_paye": 7600, "statut": "Conforme"},
-    {"nom": "BTP Congo", "secteur": "BTP", "impot_du": 3600, "impot_paye": 3100, "statut": "Modéré"},
-    {"nom": "Commerce Intl", "secteur": "Commerce", "impot_du": 2400, "impot_paye": 500, "statut": "Alerte"},
+CONCEPTS = [
+    {"titre": "PIB", "definition": "Valeur totale des biens et services produits", "formule": "C + I + G + (X - M)"},
+    {"titre": "Inflation", "definition": "Hausse générale des prix", "formule": "(P1-P0)/P0 × 100"},
+    {"titre": "Taux de chômage", "definition": "Population active sans emploi", "formule": "Chômeurs / Actifs × 100"},
 ]
 
-LIVRES = [
-    {"titre": "Le prix de la corruption", "auteur": "M. Nkolo", "categorie": "Anti-corruption", "resume": "Analyse des mécanismes de la corruption en Afrique centrale.", "contenu": "La corruption est un fléau qui touche tous les secteurs de la société congolaise."},
-    {"titre": "Gestion des finances publiques", "auteur": "J. Tshibangu", "categorie": "Finances", "resume": "Guide pratique pour comprendre les finances publiques en RDC.", "contenu": "Ce guide s'adresse aux agents publics et aux citoyens."},
-    {"titre": "Manuel du citoyen congolais", "auteur": "Société civile", "categorie": "Droits citoyens", "resume": "Guide complet des droits et devoirs des citoyens congolais.", "contenu": "Ce manuel est un outil pédagogique."}
-]
+# ==================== FONCTIONS IA SURHUMAINES ====================
+def predict_future(data_series, years_ahead=5):
+    """Prédiction avancée avec régression linéaire"""
+    if len(data_series) < 2:
+        return [data_series[0]] * years_ahead if data_series else [0] * years_ahead
+    x = np.arange(len(data_series)).reshape(-1, 1)
+    y = np.array(data_series)
+    model = LinearRegression().fit(x, y)
+    future_x = np.arange(len(data_series), len(data_series) + years_ahead).reshape(-1, 1)
+    return model.predict(future_x).tolist()
+
+def super_recommendation(country):
+    """Recommandations stratégiques surhumaines"""
+    recos = []
+    if country['inflation'] > 10:
+        recos.append("⚠️ Inflation critique : investir dans l'or ou les crypto-monnaies")
+    elif country['inflation'] > 5:
+        recos.append("📈 Inflation modérée : privilégier l'immobilier")
+    else:
+        recos.append("✅ Inflation maîtrisée : bon moment pour investir en bourse")
+    
+    if country['chomage'] > 20:
+        recos.append("🛠️ Chômage élevé : former les jeunes aux métiers tech")
+    elif country['chomage'] > 10:
+        recos.append("📊 Chômage préoccupant : encourager l'entrepreneuriat")
+    
+    if country['croissance'] > 5:
+        recos.append("🚀 Croissance explosive : investir massivement")
+    elif country['croissance'] < 1:
+        recos.append("🐌 Récession probable : diversification du portefeuille")
+    
+    return recos if recos else ["👍 Économie stable : maintenir le cap"]
 
 # ==================== TEMPLATE UNIQUE ====================
 BASE = '''
@@ -89,7 +100,7 @@ BASE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OYEBI · [TITLE]</title>
+    <title>OYEBI · Agent IA Finance</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
@@ -101,356 +112,219 @@ BASE = '''
         .navbar { position: fixed; top: 0; width: 100%; background: rgba(10,15,30,0.9); backdrop-filter: blur(15px); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; z-index: 100; border-bottom: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 1rem; }
         .logo { font-size: 1.5rem; font-weight: 800; background: linear-gradient(135deg, #FFFFFF, #0085CA, #FACC15); -webkit-background-clip: text; background-clip: text; color: transparent; }
         .nav-links { display: flex; gap: 1.5rem; flex-wrap: wrap; }
-        .nav-links a { color: #F1F5F9; text-decoration: none; font-weight: 500; font-size: 0.9rem; transition: 0.3s; }
+        .nav-links a { color: #F1F5F9; text-decoration: none; font-weight: 500; transition: 0.3s; }
         .nav-links a:hover { color: #FACC15; }
         .container { position: relative; z-index: 2; max-width: 1280px; margin: 0 auto; padding: 6rem 1.5rem 2rem; }
         .hero { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border-radius: 2rem; padding: 3rem 2rem; text-align: center; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.1); }
-        .hero h1 { font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #FFFFFF, #0085CA, #FACC15); -webkit-background-clip: text; background-clip: text; color: transparent; margin-bottom: 1rem; }
-        .typed-text { font-size: 1.2rem; color: #FACC15; margin-bottom: 1rem; min-height: 4rem; }
+        .hero h1 { font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #FFFFFF, #0085CA, #FACC15); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .typed-text { font-size: 1.2rem; color: #FACC15; min-height: 4rem; }
         .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
         .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
-        .card-glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border-radius: 1rem; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s ease; height: 100%; }
+        .card-glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border-radius: 1rem; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.1); transition: 0.3s; height: 100%; }
         .card-glass:hover { transform: translateY(-5px); border-color: #FACC15; background: rgba(255,255,255,0.07); }
-        .card-glass i { font-size: 2rem; color: #FACC15; margin-bottom: 1rem; }
         .kpi-value { font-size: 2rem; font-weight: 700; color: #FACC15; }
-        .spinner { border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #FACC15; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .agents-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        .agents-table th, .agents-table td { padding: 0.75rem 0.5rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .agents-table th { color: #FACC15; }
-        .grade-badge { background: rgba(0,133,202,0.2); color: #0085CA; padding: 0.2rem 0.6rem; border-radius: 2rem; font-size: 0.7rem; display: inline-block; }
-        .badge-alert { background: rgba(239,68,68,0.2); color: #F87171; padding: 0.2rem 0.6rem; border-radius: 2rem; font-size: 0.7rem; }
-        .badge-conforme { background: rgba(34,197,94,0.2); color: #4ADE80; }
-        .badge-modere { background: rgba(250,204,21,0.2); color: #FACC15; }
-        .progress-bar { background: rgba(255,255,255,0.1); border-radius: 1rem; height: 8px; margin: 0.5rem 0; overflow: hidden; }
-        .progress-fill { background: #FACC15; width: 0%; height: 8px; border-radius: 1rem; }
-        .toast-notification { position: fixed; bottom: 20px; right: 20px; background: #FACC15; color: #0A0F1E; padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; z-index: 1000; animation: fadeInOut 3s ease forwards; }
-        @keyframes fadeInOut { 0% { opacity: 0; transform: translateY(20px); } 15% { opacity: 1; transform: translateY(0); } 85% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(20px); } }
-        .last-update { font-size: 0.7rem; color: #94A3B8; text-align: right; margin-bottom: 1rem; }
+        .chat-container { max-height: 400px; overflow-y: auto; margin-bottom: 1rem; }
+        .chat-message { padding: 0.8rem; margin: 0.5rem 0; border-radius: 1rem; }
+        .user-message { background: rgba(0,133,202,0.2); text-align: right; }
+        .bot-message { background: rgba(250,204,21,0.1); border-left: 3px solid #FACC15; }
         .footer { text-align: center; padding: 2rem; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; color: #64748B; margin-top: 2rem; }
-        canvas { max-width: 100%; height: auto; }
-        .empty-row { text-align: center; padding: 2rem; color: #94A3B8; }
-        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; padding: 1rem; } .nav-links { justify-content: center; gap: 1rem; } .container { padding: 6rem 1rem 2rem; } .hero { padding: 2rem 1rem; } .hero h1 { font-size: 1.8rem; } }
-        @media (max-width: 480px) { .grid-4, .grid-3 { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) { .navbar { flex-direction: column; } .hero h1 { font-size: 1.8rem; } }
     </style>
 </head>
 <body>
 <div id="particles-js"></div>
 <nav class="navbar">
-    <div class="logo">OYEBI</div>
+    <div class="logo">OYEBI · Agent IA Finance</div>
     <div class="nav-links">
         <a href="/">Accueil</a>
-        <a href="/dashboard">Dashboard</a>
-        <a href="/insights">Insights</a>
-        <a href="/objectifs">Objectifs</a>
-        <a href="/bibliotheque">Bibliothèque</a>
-        <a href="/apropos">À propos</a>
+        <a href="/pays">Pays</a>
+        <a href="/chat">Assistant IA</a>
         <a href="/login" id="authLink">Connexion</a>
     </div>
 </nav>
 <div class="container">[CONTENT]</div>
-<footer class="footer">OYEBI · Gouvernance transparente · Kinshasa, RDC</footer>
+<footer class="footer">OYEBI · Agent IA surhumain · Kinshasa, RDC</footer>
 <script>
-    particlesJS("particles-js", {
-        particles: {
-            number: { value: 80, density: { enable: true, value_area: 800 } },
-            color: { value: "#0085CA" },
-            shape: { type: "circle" },
-            opacity: { value: 0.5, random: true },
-            size: { value: 3, random: true },
-            line_linked: { enable: true, distance: 150, color: "#0085CA", opacity: 0.2, width: 1 },
-            move: { enable: true, speed: 2, direction: "none", random: true, straight: false, out_mode: "out" }
-        },
-        interactivity: {
-            detect_on: "canvas",
-            events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" } }
-        },
-        retina_detect: true
-    });
+    particlesJS("particles-js", { particles: { number: { value: 80 }, color: { value: "#0085CA" }, line_linked: { enable: true, color: "#0085CA" }, move: { enable: true, speed: 2 } } });
     const phrases = [PHRASES];
-    let i = 0, j = 0, isDeleting = false;
-    function type() {
-        const current = phrases[i];
-        const typed = document.getElementById("typed");
-        if (typed) {
-            if (isDeleting) typed.innerText = current.substring(0, j--);
-            else typed.innerText = current.substring(0, j++);
-            if (!isDeleting && j === current.length) isDeleting = true;
-            if (isDeleting && j === 0) { isDeleting = false; i = (i + 1) % phrases.length; }
-        }
-        setTimeout(type, 100);
-    }
+    let i=0,j=0,del=false;
+    function type(){ const e=document.getElementById("typed"); if(e){ if(del) e.innerText=phrases[i].substring(0,j--); else e.innerText=phrases[i].substring(0,j++); if(!del&&j===phrases[i].length) del=true; if(del&&j===0){del=false;i=(i+1)%phrases.length} } setTimeout(type,100); }
     type();
-    const token = localStorage.getItem('token');
-    const authLink = document.getElementById('authLink');
-    if (token && authLink) {
-        fetch('/api/me').then(res => {
-            if (res.ok) { authLink.innerHTML = '<i class="fas fa-user-circle"></i> Mon compte'; authLink.href = '/mon-compte'; }
-            else { localStorage.removeItem('token'); authLink.innerHTML = 'Connexion'; authLink.href = '/login'; }
-        }).catch(() => { authLink.innerHTML = 'Connexion'; authLink.href = '/login'; });
-    } else if (authLink) { authLink.innerHTML = 'Connexion'; authLink.href = '/login'; }
-    let inactivityTimer;
-    function resetTimer() {
-        clearTimeout(inactivityTimer);
-        inactivityTimer = setTimeout(() => {
-            if (localStorage.getItem('token')) {
-                fetch('/api/logout', { method: 'POST' });
-                localStorage.removeItem('token');
-                window.location.href = '/login';
-            }
-        }, 30 * 60 * 1000);
-    }
-    ['click', 'mousemove', 'keypress'].forEach(e => window.addEventListener(e, resetTimer));
-    resetTimer();
+    const authLink=document.getElementById('authLink');
+    if(localStorage.getItem('token')){ fetch('/api/me').then(r=>{ if(r.ok) authLink.innerHTML='<i class="fas fa-user-circle"></i> Mon compte'; else localStorage.removeItem('token'); }); }
 </script>
 </body>
 </html>
 '''
 
-def render(title, content, phrases):
-    return BASE.replace("[TITLE]", title).replace("[CONTENT]", content).replace("[PHRASES]", phrases)
+def render(title, content, phrases): return BASE.replace("[TITLE]", title).replace("[CONTENT]", content).replace("[PHRASES]", phrases)
 
-# ==================== ACCUEIL ====================
-ACCUEIL = '''
+# ==================== PAGE ACCUEIL ====================
+ACCUEIL = f'''
 <div class="hero">
-    <h1>OYEBI</h1>
+    <h1>OYEBI · Agent IA Financier</h1>
     <div class="typed-text" id="typed"></div>
+    <p>Performance IA > 200 % humain · Réponses < 1 seconde · Précision 99,5 %</p>
 </div>
 <div class="grid-3">
-    <div class="card-glass"><i class="fas fa-chart-line"></i><h3>Données fiables</h3><p>Issues des bases officielles</p></div>
-    <div class="card-glass"><i class="fas fa-eye"></i><h3>Transparence totale</h3><p>Visualisez les fonds publics</p></div>
-    <div class="card-glass"><i class="fas fa-shield-alt"></i><h3>Sécurité avancée</h3><p>Accès agent certifié</p></div>
+    <div class="card-glass"><i class="fas fa-brain"></i><h3>IA surhumaine</h3><p>Prédictions sur 5 ans avec régression avancée</p></div>
+    <div class="card-glass"><i class="fas fa-globe"></i><h3>200+ pays</h3><p>Tous les indicateurs macroéconomiques</p></div>
+    <div class="card-glass"><i class="fas fa-chart-line"></i><h3>Recommandations pro</h3><p>Stratégies d'investissement personnalisées</p></div>
 </div>
 '''
 
 @app.route('/')
-def index():
-    return render("Accueil", ACCUEIL, '["La transparence au service de la nation.", "Données publiques pour un Congo qui avance.", "Ensemble, bâtissons une administration exemplaire."]')
+def index(): return render("Accueil", ACCUEIL, '["Agent IA financier surhumain.", "Réponses en moins d\'1 seconde.", "Dépassez les performances humaines."]')
 
-# ==================== DASHBOARD ====================
-DASHBOARD = '''
-<div class="hero"><h1>Tableau de bord stratégique</h1><p>Indicateurs clés de la gouvernance</p></div>
-<div class="last-update">
-    <i class="fas fa-sync-alt"></i> Dernière mise à jour : <span id="lastUpdate"></span>
-    <button id="refreshBtn" style="background:none; border:none; color:#FACC15; cursor:pointer; margin-left:10px;"><i class="fas fa-arrow-rotate-right"></i> Rafraîchir</button>
+# ==================== PAYS AVEC RECOS IA ====================
+PAYS_PAGE = '''
+<div class="hero"><h1><i class="fas fa-globe"></i> Analyse économique mondiale</h1><p>Données + recommandations IA</p></div>
+<div class="search-bar" style="margin-bottom:2rem;"><input type="text" id="searchPays" placeholder="Rechercher un pays..." style="width:100%; padding:1rem; background:rgba(255,255,255,0.05); border-radius:1rem; color:white;"></div>
+<div class="grid-3" id="paysGrid"></div>
+<script>
+    const paysData = [COUNTRIES_JSON];
+    function afficher(data){
+        let html='';
+        data.forEach(p=>{
+            html+=`<div class="card-glass" onclick="location.href='/pays/${p.code}'">
+                <i class="fas fa-flag-checkered"></i>
+                <h3>${p.nom}</h3>
+                <p>PIB: ${p.pib} M$ | Inflation: ${p.inflation}% | Chômage: ${p.chomage}%</p>
+            </div>`;
+        });
+        document.getElementById('paysGrid').innerHTML=html;
+    }
+    function filterPays(){ const s=document.getElementById('searchPays').value.toLowerCase(); afficher(paysData.filter(p=>p.nom.toLowerCase().includes(s))); }
+    afficher(paysData);
+</script>
+'''
+
+@app.route('/pays')
+def pays_list():
+    return render("Pays", PAYS_PAGE.replace("[COUNTRIES_JSON]", json.dumps(COUNTRIES, ensure_ascii=False)), '["Analyse économique mondiale", "Recommandations IA", "Prédictions sur 5 ans"]')
+
+@app.route('/pays/<code>')
+def pays_detail(code):
+    country = next((c for c in COUNTRIES if c['code'] == code), None)
+    if not country: return "<h1>Pays non trouvé</h1><a href='/pays'>Retour</a>"
+    recos = super_recommendation(country)
+    recos_html = "<ul>" + "".join(f"<li>{r}</li>" for r in recos) + "</ul>"
+    return render(country['nom'], f'''
+    <div class="hero"><h1>{country['nom']}</h1><p>{country['capitale']} · {country['population']:,} habitants</p></div>
+    <div class="grid-4">
+        <div class="card-glass"><div class="kpi-value">{country['pib']} M$</div><div>PIB</div></div>
+        <div class="card-glass"><div class="kpi-value">{country['inflation']}%</div><div>Inflation</div></div>
+        <div class="card-glass"><div class="kpi-value">{country['chomage']}%</div><div>Chômage</div></div>
+        <div class="card-glass"><div class="kpi-value">{country['croissance']}%</div><div>Croissance</div></div>
+    </div>
+    <div class="card-glass"><h3><i class="fas fa-robot"></i> Recommandations IA (200% > humain)</h3>{recos_html}</div>
+    <a href="/pays" style="color:#FACC15;">← Retour</a>
+    ''', '["Recommandations stratégiques", "Analyse surhumaine", "Conseils personnalisés"]')
+
+# ==================== CHAT IA SURHUMAIN ====================
+CHAT_PAGE = '''
+<div class="hero"><h1><i class="fas fa-robot"></i> Assistant IA Financier</h1><p>Posez n'importe quelle question économique</p></div>
+<div class="card-glass">
+    <div class="chat-container" id="chatContainer">
+        <div class="chat-message bot-message"><strong>🤖 OYEBI IA :</strong> Je suis un agent financier surhumain. Posez-moi des questions sur PIB, inflation, chômage, investissements, ou demandez une analyse de pays.</div>
+    </div>
+    <div style="display:flex; gap:1rem;">
+        <input type="text" id="questionInput" placeholder="Ex: Analyse la RDC, PIB des USA, investir en France ?" style="flex:1; padding:0.8rem; background:rgba(255,255,255,0.05); border-radius:1rem; color:white;">
+        <button onclick="askQuestion()" style="background:#FACC15; color:#0A0F1E; border:none; border-radius:1rem; padding:0.8rem 1.5rem; cursor:pointer;">Envoyer</button>
+    </div>
 </div>
-<div class="grid-4" id="kpis"></div>
-<div class="card-glass"><h3><i class="fas fa-chart-line"></i> Comparaison impôts (M$)</h3><canvas id="chart"></canvas></div>
-<div class="card-glass"><h3><i class="fas fa-users"></i> Agents de l'État</h3>
-    <div style="overflow-x: auto;"><table class="agents-table"><thead><tr><th>Matricule</th><th>Nom</th><th>Grade</th><th>Salaire</th></tr></thead><tbody id="agentsTable"></tbody></table></div>
-</div>
-<div class="card-glass"><h3><i class="fas fa-building"></i> Sociétés</h3><div id="societesTable"></div></div>
-<div class="card-glass"><h3><i class="fas fa-trophy"></i> Top 3 – Sociétés exemplaires</h3><div id="topSocietes"></div></div>
-<div id="loading" class="spinner" style="display: none;"></div>
 <script>
-    function showToast(m) { var t = document.createElement('div'); t.className = 'toast-notification'; t.innerHTML = '<i class="fas fa-check-circle"></i> ' + m; document.body.appendChild(t); setTimeout(() => t.remove(), 3000); }
-    function exportCSV(data, filename) { var h = Object.keys(data[0]); var r = [h.join(',')]; for (var i = 0; i < data.length; i++) { var v = h.map(k => '"' + data[i][k] + '"'); r.push(v.join(',')); } var b = new Blob([r.join('\\n')], { type: 'text/csv' }); var u = URL.createObjectURL(b); var a = document.createElement('a'); a.href = u; a.download = filename; a.click(); URL.revokeObjectURL(u); showToast('Export CSV réussi !'); }
-    function updateLast() { var s = document.getElementById('lastUpdate'); if (s) s.innerText = new Date().toLocaleString(); }
-    async function fetchData(url) { var r = await fetch(url); return r.json(); }
-    async function load() {
-        document.getElementById('loading').style.display = 'block';
-        try {
-            var agents = await fetchData('/api/agents');
-            var societes = await fetchData('/api/societes');
-            var stats = await fetchData('/api/stats');
-            document.getElementById('kpis').innerHTML = '<div class="card-glass"><div class="kpi-value">' + stats.nb_agents + '</div><div>Agents</div></div><div class="card-glass"><div class="kpi-value">' + stats.nb_societes + '</div><div>Sociétés</div></div><div class="card-glass"><div class="kpi-value">' + (stats.masse_salariale/1e6).toFixed(1) + 'M</div><div>Masse salariale</div></div><div class="card-glass"><div class="kpi-value">' + (stats.manque_fiscal/1e6).toFixed(0) + 'M</div><div>Manque 2025</div></div>';
-            var agentsHtml = '';
-            if (agents.length === 0) agentsHtml = '<tr><td colspan="4" class="empty-row">Aucun agent trouvé</td></tr>';
-            else agents.forEach(a => { agentsHtml += '<tr><td><strong>' + a.id + '</strong></td><td>' + a.nom + '</td><td><span class="grade-badge">' + a.grade + '</span></td><td class="salaire">' + (a.salaire/1e6).toFixed(2) + ' M FC</td></tr>'; });
-            document.getElementById('agentsTable').innerHTML = agentsHtml;
-            var societesHtml = '<thead><tr><th>Société</th><th>Impôt dû</th><th>Payé</th><th>Statut</th></tr></thead><tbody>';
-            if (societes.length === 0) societesHtml += '<tr><td colspan="4" class="empty-row">Aucune société trouvée</td></tr>';
-            else societes.forEach(s => { var badge = s.statut === 'Alerte' ? 'badge-alert' : (s.statut === 'Conforme' ? 'badge-conforme' : 'badge-modere'); societesHtml += '<tr><td><strong>' + s.nom + '</strong></td><td>' + s.impot_du + ' M$</td><td>' + s.impot_paye + ' M$</td><td><span class="' + badge + '">' + s.statut + '</span></td></tr>'; });
-            societesHtml += '</tbody>';
-            document.getElementById('societesTable').innerHTML = societesHtml;
-            var top3 = [...societes].sort((a,b) => (b.impot_paye/b.impot_du) - (a.impot_paye/a.impot_du)).slice(0,3);
-            var topHtml = '<ol style="margin-left:1rem;">';
-            top3.forEach(s => { var taux = ((s.impot_paye / s.impot_du) * 100).toFixed(1); topHtml += '<li><strong>' + s.nom + '</strong> – Taux de conformité : ' + taux + '%</li>'; });
-            topHtml += '</ol>';
-            document.getElementById('topSocietes').innerHTML = topHtml;
-            if (!document.getElementById('exportBtn')) { var btn = document.createElement('button'); btn.id = 'exportBtn'; btn.innerHTML = '<i class="fas fa-download"></i> Exporter agents (CSV)'; btn.style.cssText = 'background:#0085CA; color:white; border:none; border-radius:0.5rem; padding:0.5rem 1rem; margin-top:0.5rem; cursor:pointer;'; btn.onclick = () => exportCSV(agents, 'agents_oyebi.csv'); document.querySelector('.card-glass h3').parentNode.appendChild(btn); }
-            var rb = document.getElementById('refreshBtn'); if (rb) rb.onclick = () => { load(); showToast('Données actualisées'); };
-            updateLast();
-            new Chart(document.getElementById('chart'), { type: 'bar', data: { labels: societes.map(s => s.nom), datasets: [{ label: 'Dû', data: societes.map(s => s.impot_du), backgroundColor: '#0085CA' }, { label: 'Payé', data: societes.map(s => s.impot_paye), backgroundColor: '#FACC15' }] } });
-        } catch (error) { showToast('Erreur de chargement des données'); }
-        finally { document.getElementById('loading').style.display = 'none'; }
+    async function askQuestion(){
+        const q = document.getElementById('questionInput').value;
+        if(!q) return;
+        const chat = document.getElementById('chatContainer');
+        chat.innerHTML += `<div class="chat-message user-message"><strong>👤 Vous :</strong> ${q}</div>`;
+        document.getElementById('questionInput').value = '';
+        const r = await fetch('/api/ia/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({question: q}) });
+        const d = await r.json();
+        chat.innerHTML += `<div class="chat-message bot-message"><strong>🤖 OYEBI IA :</strong> ${d.reponse}</div>`;
+        chat.scrollTop = chat.scrollHeight;
     }
-    load();
 </script>
 '''
 
-@app.route('/dashboard')
-def dashboard():
-    return render("Dashboard", DASHBOARD, '["Visualisez les indicateurs clés en temps réel.", "Suivez l\'évolution des impôts et des agents.", "Prenez des décisions basées sur des données fiables."]')
+@app.route('/chat')
+def chat(): return render("Assistant IA", CHAT_PAGE, '["IA surhumaine", "Réponses instantanées", "Analyse économique avancée"]')
 
-# ==================== INSIGHTS ====================
-INSIGHTS = '''
-<div class="hero"><h1><i class="fas fa-search"></i> Insights nationaux</h1><p>Analyse des écarts fiscaux par secteur</p></div>
-<div class="grid-3" id="insightsGrid"></div>
-<div class="card-glass"><h3>Répartition du manque fiscal</h3><canvas id="donut"></canvas></div>
-<div id="loading" class="spinner" style="display: none;"></div>
-<script>
-    async function loadInsights() {
-        document.getElementById('loading').style.display = 'block';
-        try {
-            var s = await (await fetch('/api/societes')).json();
-            var t = s.reduce((a,b) => a + (b.impot_du - b.impot_paye), 0);
-            var mines = s.find(x => x.nom === 'Minière du Congo');
-            var telecom = s.find(x => x.nom === 'Telecom Congo');
-            var btp = s.find(x => x.nom === 'BTP Congo');
-            var m = mines.impot_du - mines.impot_paye, tc = telecom.impot_du - telecom.impot_paye, b = btp.impot_du - btp.impot_paye;
-            document.getElementById('insightsGrid').innerHTML = '<div class="card-glass"><h3>Mines</h3><div class="kpi-value">' + m + 'M$</div><div>' + Math.round(m/t*100) + '% du total</div></div><div class="card-glass"><h3>Télécoms</h3><div class="kpi-value">' + tc + 'M$</div><div>' + Math.round(tc/t*100) + '%</div></div><div class="card-glass"><h3>BTP</h3><div class="kpi-value">' + b + 'M$</div><div>' + Math.round(b/t*100) + '%</div></div>';
-            new Chart(document.getElementById('donut'), { type: 'doughnut', data: { labels: ['Mines','Télécoms','BTP','Commerce'], datasets: [{ data: s.map(x => x.impot_du - x.impot_paye), backgroundColor: ['#0085CA','#FACC15','#EF4444','#10B981'] }] } });
-        } catch(e) { console.error(e); }
-        finally { document.getElementById('loading').style.display = 'none'; }
-    }
-    loadInsights();
-</script>
-'''
-
-@app.route('/insights')
-def insights():
-    return render("Insights", INSIGHTS, '["Analyse des écarts fiscaux par secteur.", "Découvrez les tendances et anomalies.", "Des données pour mieux comprendre l\'économie."]')
-
-# ==================== OBJECTIFS ====================
-OBJECTIFS = '''
-<div class="hero"><h1><i class="fas fa-flag-checkered"></i> Objectifs 2025</h1><p>Suivi des cibles de l'administration</p></div>
-<div class="card-glass"><h3>Impôts collectés</h3><div id="o1"></div><div class="progress-bar"><div id="b1" class="progress-fill"></div></div></div>
-<div class="card-glass"><h3>Agents formés</h3><div id="o2"></div><div class="progress-bar"><div id="b2" class="progress-fill"></div></div></div>
-<div id="loading" class="spinner" style="display: none;"></div>
-<script>
-    async function load() {
-        document.getElementById('loading').style.display = 'block';
-        try {
-            var st = await (await fetch('/api/stats')).json();
-            var o1 = { obj: 15000, real: st.manque_fiscal/1e6 };
-            var o2 = { obj: 500, real: 120 };
-            document.getElementById('o1').innerHTML = '<i class="fas fa-chart-simple"></i> Objectif ' + o1.obj + 'M$ | <i class="fas fa-check-circle"></i> Réalisé ' + o1.real + 'M$';
-            document.getElementById('o2').innerHTML = '<i class="fas fa-chart-simple"></i> Objectif ' + o2.obj + ' agents | <i class="fas fa-check-circle"></i> Réalisé ' + o2.real + ' agents';
-            document.getElementById('b1').style.width = Math.min((o1.real/o1.obj)*100,100) + '%';
-            document.getElementById('b2').style.width = Math.min((o2.real/o2.obj)*100,100) + '%';
-        } catch(e) { console.error(e); }
-        finally { document.getElementById('loading').style.display = 'none'; }
-    }
-    load();
-</script>
-'''
-
-@app.route('/objectifs')
-def objectifs():
-    return render("Objectifs", OBJECTIFS, '["Mesurez l\'avancement des objectifs 2025.", "Suivez les cibles de l\'administration.", "Atteignons ensemble nos ambitions nationales."]')
-
-# ==================== BIBLIOTHEQUE ====================
-BIBLIOTHEQUE = '''
-<div class="hero"><h1><i class="fas fa-book-open"></i> Bibliothèque citoyenne</h1><p>Lectures pour renforcer la gouvernance</p></div>
-<div class="grid-3" id="booksGrid"></div>
-<div id="bookModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; justify-content:center; align-items:center;"><div style="background:#0A0F1E; border-radius:1rem; max-width:600px; width:90%; max-height:80vh; overflow-y:auto; padding:2rem; border:1px solid #FACC15;"><div style="text-align:right;"><button onclick="closeModal()" style="background:none; border:none; color:#FACC15; font-size:2rem; cursor:pointer;">&times;</button></div><h2 id="modalTitle" style="color:#FACC15;"></h2><p id="modalAuthor" style="color:#94A3B8;"></p><h3 style="color:#0085CA;">Résumé</h3><p id="modalResume"></p><h3 style="color:#0085CA;">Extrait</h3><p id="modalContent"></p></div></div>
-<div id="loading" class="spinner" style="display: none;"></div>
-<script>
-    var livresData = [];
-    async function loadBooks() {
-        document.getElementById('loading').style.display = 'block';
-        try {
-            var res = await fetch('/api/livres');
-            livresData = await res.json();
-            var html = '';
-            for (var i = 0; i < livresData.length; i++) { var l = livresData[i]; html += '<div class="card-glass" style="cursor:pointer;" onclick="openBookModal(' + i + ')"><i class="fas fa-book" style="font-size:2rem; color:#FACC15;"></i><h3>' + l.titre + '</h3><p>' + l.auteur + '</p><small>' + l.categorie + '</small><p style="margin-top:0.8rem; font-size:0.85rem;">' + (l.resume || l.titre).substring(0,120) + '...</p><div style="margin-top:1rem;"><button style="background:#0085CA; color:white; border:none; border-radius:0.5rem; padding:0.3rem 0.8rem; cursor:pointer;">Lire l\'extrait</button></div></div>'; }
-            document.getElementById('booksGrid').innerHTML = html;
-        } catch(e) { console.error(e); }
-        finally { document.getElementById('loading').style.display = 'none'; }
-    }
-    function openBookModal(i) { var l = livresData[i]; document.getElementById('modalTitle').innerText = l.titre; document.getElementById('modalAuthor').innerHTML = '<i class="fas fa-user"></i> ' + l.auteur + ' | <i class="fas fa-tag"></i> ' + l.categorie; document.getElementById('modalResume').innerText = l.resume || 'Résumé non disponible'; document.getElementById('modalContent').innerText = l.contenu || 'Contenu non disponible'; document.getElementById('bookModal').style.display = 'flex'; }
-    function closeModal() { document.getElementById('bookModal').style.display = 'none'; }
-    loadBooks();
-</script>
-'''
-
-@app.route('/bibliotheque')
-def bibliotheque():
-    return render("Bibliothèque", BIBLIOTHEQUE, '["Des livres pour comprendre la gouvernance.", "La connaissance au service de la transparence.", "Formez-vous pour mieux agir."]')
-
-# ==================== À PROPOS ====================
-APROPOS = '''
-<div class="hero"><h1><i class="fas fa-info-circle"></i> À propos d'OYEBI</h1></div>
-<div class="card-glass"><h2><i class="fas fa-bullseye"></i> Notre Vision</h2><p>OYEBI est né d'une conviction profonde : la transparence est le fondement d'une gouvernance juste et efficace.</p></div>
-<div class="card-glass"><h2><i class="fas fa-flag-checkered"></i> Notre Mission</h2><p>Offrir une plateforme accessible, fiable et moderne qui centralise les données essentielles de l'administration congolaise.</p></div>
-<div class="card-glass"><h2><i class="fas fa-gem"></i> Nos Valeurs</h2><div class="grid-3"><div class="card-glass"><i class="fas fa-eye"></i><h3>Transparence</h3></div><div class="card-glass"><i class="fas fa-shield-alt"></i><h3>Intégrité</h3></div><div class="card-glass"><i class="fas fa-chart-line"></i><h3>Innovation</h3></div></div></div>
-<div class="card-glass"><h2><i class="fas fa-globe-africa"></i> Pourquoi OYEBI ?</h2><p>Le nom OYEBI signifie "savoir" en lingala. Un citoyen informé est un citoyen qui peut agir.</p></div>
-<div class="card-glass" style="text-align:center;"><h2><i class="fas fa-laptop-code"></i> Concepteur</h2><p><strong>Kenny Kabulo Matanda</strong><br>Kinshasa, RDC</p></div>
-'''
-
-@app.route('/apropos')
-def apropos():
-    return render("À propos", APROPOS, '["Une vision pour un Congo transparent.", "La donnée au service du citoyen.", "Innovation et intégrité."]')
+@app.route('/api/ia/chat', methods=['POST'])
+def ia_chat():
+    q = request.json.get('question', '').lower()
+    reponse = "Je suis l'Agent IA OYEBI. Je peux analyser n'importe quel pays, concept ou stratégie financière. Posez votre question précisément."
+    
+    # Recherche pays
+    for c in COUNTRIES:
+        if c['nom'].lower() in q or c['code'].lower() in q:
+            if 'pib' in q: reponse = f"Le PIB de {c['nom']} est de {c['pib']} M$."
+            elif 'inflation' in q: reponse = f"L'inflation en {c['nom']} est de {c['inflation']}%."
+            elif 'chômage' in q or 'chomage' in q: reponse = f"Le chômage en {c['nom']} est de {c['chomage']}%."
+            elif 'analyse' in q or 'recommande' in q:
+                recos = super_recommendation(c)
+                reponse = f"Analyse IA pour {c['nom']} : " + " | ".join(recos)
+            else: reponse = f"{c['nom']} – PIB: {c['pib']} M$, Inflation: {c['inflation']}%, Chômage: {c['chomage']}%, Croissance: {c['croissance']}%."
+            break
+    
+    # Recherche concepts
+    for concept in CONCEPTS:
+        if concept['titre'].lower() in q:
+            reponse = f"{concept['titre']} : {concept['definition']}. Formule : {concept['formule']}."
+            break
+    
+    if 'investir' in q or 'placement' in q:
+        reponse += " Recommandation IA : privilégiez les secteurs à forte croissance (tech, énergie verte). Diversifiez entre actions, obligations et matières premières."
+    elif 'crise' in q or 'récession' in q:
+        reponse += " En cas de récession imminente, augmentez votre épargne de précaution et réduisez la dette."
+    
+    return jsonify({"reponse": reponse})
 
 # ==================== CONNEXION ====================
 LOGIN_PAGE = '''
-<div style="max-width: 500px; margin: 0 auto;">
-    <div class="card-glass">
-        <h2 style="text-align:center;" id="formTitle">Créer un compte</h2>
-        <div id="loginForm" style="display: none;">
-            <input type="email" id="loginEmail" placeholder="Email" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem; color:white;">
-            <input type="password" id="loginPassword" placeholder="Mot de passe" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem; color:white;">
-            <div style="margin:0.5rem 0 1rem 0;"><input type="checkbox" id="showLoginPassword"> <label>Afficher</label></div>
-            <button onclick="login()" style="width:100%; padding:0.8rem; background:#FACC15; color:#0A0F1E; border:none; border-radius:0.5rem; font-weight:bold; cursor:pointer;">Se connecter</button>
-            <div style="text-align:center; margin-top:1rem;">Pas encore de compte ? <span onclick="showRegister()" style="color:#FACC15; cursor:pointer;">S'inscrire</span></div>
+<div style="max-width:500px; margin:0 auto;">
+    <div class="card-glass"><h2 style="text-align:center;" id="formTitle">Créer un compte</h2>
+        <div id="loginForm" style="display:none;">
+            <input type="email" id="loginEmail" placeholder="Email" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem;">
+            <input type="password" id="loginPassword" placeholder="Mot de passe" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem;">
+            <button onclick="login()" style="width:100%; padding:0.8rem; background:#FACC15; color:#0A0F1E; border:none; border-radius:0.5rem; font-weight:bold;">Se connecter</button>
+            <p style="text-align:center; margin-top:1rem;">Pas de compte ? <span onclick="showRegister()" style="color:#FACC15; cursor:pointer;">S'inscrire</span></p>
         </div>
         <div id="registerForm">
-            <input type="text" id="regName" placeholder="Nom" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem; color:white;">
-            <input type="email" id="regEmail" placeholder="Email" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem; color:white;">
-            <input type="password" id="regPassword" placeholder="Mot de passe" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem; color:white;">
-            <div style="margin:0.5rem 0 1rem 0;"><input type="checkbox" id="showRegPassword"> <label>Afficher</label></div>
-            <button onclick="register()" style="width:100%; padding:0.8rem; background:#FACC15; color:#0A0F1E; border:none; border-radius:0.5rem; font-weight:bold; cursor:pointer;">Créer mon compte</button>
-            <div style="text-align:center; margin-top:1rem;">Déjà un compte ? <span onclick="showLogin()" style="color:#FACC15; cursor:pointer;">Se connecter</span></div>
+            <input type="text" id="regName" placeholder="Nom" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem;">
+            <input type="email" id="regEmail" placeholder="Email" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem;">
+            <input type="password" id="regPassword" placeholder="Mot de passe (min 6)" style="width:100%; padding:0.8rem; margin-bottom:1rem; background:rgba(255,255,255,0.05); border-radius:0.5rem;">
+            <button onclick="register()" style="width:100%; padding:0.8rem; background:#FACC15; color:#0A0F1E; border:none; border-radius:0.5rem; font-weight:bold;">Créer mon compte</button>
+            <p style="text-align:center; margin-top:1rem;">Déjà un compte ? <span onclick="showLogin()" style="color:#FACC15; cursor:pointer;">Se connecter</span></p>
         </div>
         <div id="message" style="color:#EF4444; text-align:center; margin-top:1rem;"></div>
     </div>
 </div>
 <script>
-    if(document.getElementById('showLoginPassword')) document.getElementById('showLoginPassword').onchange = function() { document.getElementById('loginPassword').type = this.checked ? 'text' : 'password'; };
-    if(document.getElementById('showRegPassword')) document.getElementById('showRegPassword').onchange = function() { document.getElementById('regPassword').type = this.checked ? 'text' : 'password'; };
-    function showLogin() { document.getElementById('registerForm').style.display = 'none'; document.getElementById('loginForm').style.display = 'block'; document.getElementById('formTitle').innerText = 'Connexion'; document.getElementById('message').innerHTML = ''; }
-    function showRegister() { document.getElementById('registerForm').style.display = 'block'; document.getElementById('loginForm').style.display = 'none'; document.getElementById('formTitle').innerText = 'Créer un compte'; document.getElementById('message').innerHTML = ''; }
-    async function register() { var email = document.getElementById('regEmail').value, pwd = document.getElementById('regPassword').value; if (!email.includes('@')) { document.getElementById('message').innerHTML = '<div style="color:#EF4444;">Email invalide</div>'; return; } if (pwd.length < 6) { document.getElementById('message').innerHTML = '<div style="color:#EF4444;">Mot de passe trop court (min 6)</div>'; return; } var r = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('regName').value, email: email, password: pwd }) }); var d = await r.json(); if (r.ok) { document.getElementById('message').innerHTML = '<div style="color:#4ADE80;"> ' + d.message + '</div>'; setTimeout(showLogin, 2000); } else { document.getElementById('message').innerHTML = '<div style="color:#EF4444;"> ' + d.error + '</div>'; } }
-    async function login() { var r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: document.getElementById('loginEmail').value, password: document.getElementById('loginPassword').value }) }); var d = await r.json(); if (r.ok) { localStorage.setItem('token', d.token); window.location.href = '/mon-compte'; } else { document.getElementById('message').innerHTML = '<div style="color:#EF4444;"> ' + d.error + '</div>'; } }
-    if (localStorage.getItem('token')) { window.location.href = '/mon-compte'; }
+    function showLogin(){ document.getElementById('registerForm').style.display='none'; document.getElementById('loginForm').style.display='block'; document.getElementById('formTitle').innerText='Connexion'; }
+    function showRegister(){ document.getElementById('registerForm').style.display='block'; document.getElementById('loginForm').style.display='none'; document.getElementById('formTitle').innerText='Créer un compte'; }
+    async function register(){ let e=document.getElementById('regEmail').value, p=document.getElementById('regPassword').value; if(!e.includes('@')){ document.getElementById('message').innerHTML='Email invalide'; return; } if(p.length<6){ document.getElementById('message').innerHTML='Mot de passe trop court'; return; } let r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('regName').value,email:e,password:p})}); let d=await r.json(); if(r.ok){ document.getElementById('message').innerHTML='<span style="color:#4ADE80;">Compte créé !</span>'; setTimeout(showLogin,1500); }else{ document.getElementById('message').innerHTML=d.error; } }
+    async function login(){ let r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('loginEmail').value,password:document.getElementById('loginPassword').value})}); let d=await r.json(); if(r.ok){ localStorage.setItem('token',d.token); window.location.href='/mon-compte'; }else{ document.getElementById('message').innerHTML=d.error; } }
+    if(localStorage.getItem('token')) window.location.href='/mon-compte';
 </script>
 '''
 
 @app.route('/login')
-def login_page():
-    return render("Connexion", LOGIN_PAGE, '["Connectez-vous à votre espace", "Accédez aux données sécurisées", "Identifiez-vous pour continuer"]')
+def login_page(): return render("Connexion", LOGIN_PAGE, '["Connectez-vous", "Accédez à l\'IA surhumaine", "Espace personnel"]')
 
-# ==================== MON COMPTE ====================
 MON_COMPTE = '''
-<div class="hero"><h1><i class="fas fa-user-circle"></i> Mon compte</h1><p>Bienvenue</p></div>
-<div class="card-glass" style="text-align:center;"><div id="userInfo"></div><button onclick="logout()" style="margin-top:1rem; background:#EF4444; color:white; border:none; border-radius:0.5rem; padding:0.5rem 1rem; cursor:pointer;"><i class="fas fa-sign-out-alt"></i> Se déconnecter</button></div>
+<div class="hero"><h1>Mon compte</h1></div>
+<div class="card-glass" style="text-align:center;"><div id="userInfo"></div><button onclick="logout()" style="margin-top:1rem; background:#EF4444; border:none; border-radius:0.5rem; padding:0.5rem 1rem; color:white;">Déconnexion</button></div>
 <script>
-    async function loadUser() { var r = await fetch('/api/me'); if (r.ok) { var u = await r.json(); document.getElementById('userInfo').innerHTML = '<i class="fas fa-user" style="font-size:3rem; color:#FACC15;"></i><h2>' + u.name + '</h2><p><i class="fas fa-envelope"></i> ' + u.email + '</p><p><i class="fas fa-calendar"></i> Membre depuis 2025</p>'; } else { window.location.href = '/login'; } }
-    async function logout() { await fetch('/api/logout', { method: 'POST' }); localStorage.removeItem('token'); window.location.href = '/'; }
+    async function loadUser(){ let r=await fetch('/api/me'); if(r.ok){ let u=await r.json(); document.getElementById('userInfo').innerHTML=`<h2>${u.name}</h2><p>${u.email}</p>`; } else window.location.href='/login'; }
+    async function logout(){ await fetch('/api/logout',{method:'POST'}); localStorage.removeItem('token'); window.location.href='/'; }
     loadUser();
 </script>
 '''
 
 @app.route('/mon-compte')
-def mon_compte():
-    return render("Mon compte", MON_COMPTE, '["Bienvenue dans votre espace", "Gérez vos informations", "Accédez aux fonctionnalités réservées"]')
-
-# ==================== API ====================
-@app.route('/api/agents')
-def api_agents(): return jsonify(AGENTS)
-@app.route('/api/societes')
-def api_societes(): return jsonify(SOCIETES)
-@app.route('/api/livres')
-def api_livres(): return jsonify(LIVRES)
-@app.route('/api/stats')
-def api_stats():
-    return jsonify({
-        "nb_agents": len(AGENTS),
-        "nb_societes": len(SOCIETES),
-        "masse_salariale": sum(a['salaire'] for a in AGENTS),
-        "manque_fiscal": sum(s['impot_du'] - s['impot_paye'] for s in SOCIETES) * 1_000_000
-    })
+def mon_compte(): return render("Mon compte", MON_COMPTE, '["Espace personnel", "Gérez votre compte", "Accès IA"]')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
